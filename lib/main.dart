@@ -6,8 +6,13 @@ import 'package:geolocator/geolocator.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:lottie/lottie.dart';
 import 'dart:ui';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 
-void main() {
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  await dotenv.load(fileName: ".env");
+
   runApp(MaterialApp(
     debugShowCheckedModeBanner: false,
     home: WeatherScreen(),
@@ -46,35 +51,48 @@ class _WeatherScreenState extends State<WeatherScreen> {
 
   List forecastData = [];
 
-  String apiKey = "REMOVED";
-
+  // OpenWeather API key loaded securely from environment variables
+  String apiKey = dotenv.env['OPENWEATHER_API_KEY'] ?? '';
 
   // 🌤 GET CURRENT WEATHER
   Future getWeather() async {
     String city = cityController.text;
     print("Getting weather for city: $city");
 
+    if (city.isEmpty) {
+      setState(() {
+        errorMessage = "Please enter a city name";
+        isLoading = false;
+      });
+      return;
+    }
+
     setState(() {
       isLoading = true;
       errorMessage = "";
     });
 
-    var url = Uri.parse(
-        "https://api.openweathermap.org/data/2.5/weather?q=$city&appid=$apiKey&units=metric"
-    );
+    try {
+      var url = Uri.parse(
+        "https://api.openweathermap.org/data/2.5/weather"
+        "?q=$city&appid=$apiKey&units=metric",
+      );
 
-    var response = await http.get(url);
-    var data = jsonDecode(response.body);
+      var response = await http.get(url);
+      print("Response Status Code: ${response.statusCode}");
+      print("Response Body: ${response.body}");
 
-    if (response.statusCode != 200) {
-  setState(() {
-    errorMessage = "City not found ❌";
-    temperature = "";
-    weather = "";
-    isLoading = false;
-  });
-  return;
- }
+      if (response.statusCode != 200) {
+        setState(() {
+          errorMessage = "API Error (${response.statusCode}): ${response.body}";
+          temperature = "";
+          weather = "";
+          isLoading = false;
+        });
+        return;
+      }
+
+      var data = jsonDecode(response.body);
 
     setState(() {
       temperature = data['main']['temp'].toString();
@@ -167,6 +185,13 @@ class _WeatherScreenState extends State<WeatherScreen> {
 
     getAQI(lat, lon);
     await getForecast(); // 👈 call forecast
+    } catch (e) {
+      print("Error fetching weather: $e");
+      setState(() {
+        errorMessage = "Error: $e";
+        isLoading = false;
+      });
+    }
   }
 
   // 📅 GET FORECAST
@@ -174,14 +199,15 @@ class _WeatherScreenState extends State<WeatherScreen> {
     String city = cityController.text;
 
     var url = Uri.parse(
-        "https://api.openweathermap.org/data/2.5/forecast?q=$city&appid=$apiKey&units=metric"
+      "https://api.openweathermap.org/data/2.5/forecast"
+      "?q=$city&appid=$apiKey&units=metric",
     );
-
+    
     var response = await http.get(url);
-    var data = jsonDecode(response.body);
-
-    // ignore: unrelated_type_equality_checks
+    
     if (response.statusCode != 200) return;
+
+    var data = jsonDecode(response.body);
 
     List dailyData = [];
 
@@ -285,7 +311,8 @@ String getWeatherAlert() {
 
   Future getAQI(double lat, double lon) async {
     var url = Uri.parse(
-        "https://api.openweathermap.org/data/2.5/air_pollution?lat=$lat&lon=$lon&appid=$apiKey"
+        "https://api.openweathermap.org/data/2.5/air_pollution"
+        "?lat=$lat&lon=$lon&appid=$apiKey"
     );
 
     var response = await http.get(url);
@@ -293,6 +320,8 @@ String getWeatherAlert() {
     if (kDebugMode) {
       print(response.body);
     }
+
+    if (response.statusCode != 200) return;
 
     var data = jsonDecode(response.body);
 
